@@ -1,4 +1,4 @@
-// redisConfig.js
+// config/redisConfig.js
 import { createClient } from 'redis';
 
 const redisClient = createClient({

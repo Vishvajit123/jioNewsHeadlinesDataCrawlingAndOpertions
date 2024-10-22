@@ -1,4 +1,4 @@
-//mongoService.js
+// services/mongoService.js
 
 import { Headline } from "../models/headlineModel.js";
 

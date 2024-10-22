@@ -1,4 +1,4 @@
-// mongoConfig.js
+// config/mongoConfig.js
 import mongoose from 'mongoose';
 
 const connectMongo = async () => {

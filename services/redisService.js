@@ -1,4 +1,4 @@
-// redisService.js
+// services/redisService.js
 import { redisClient } from '../config/redisConfig.js';
 
 export async function pushToQueue(queueName, data) {

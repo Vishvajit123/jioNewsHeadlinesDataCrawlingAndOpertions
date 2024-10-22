@@ -1,4 +1,4 @@
-// headlineController.js
+// controllers/headlineController.js
 import { redisClient } from '../config/redisConfig.js';
 import { Headline } from '../models/headlineModel.js';
 import { fetchHeadlinesFromAPI } from '../services/apiService.js';

@@ -1,4 +1,4 @@
-// headlineRoutes.js
+// routes/headlineRoutes.js
 import express from "express";
 import { getHeadlinesController, viewNews } from '../controllers/headlineController.js';
 

@@ -1,4 +1,4 @@
-// headlineModel.js
+// models/headlineModel.js
 import mongoose from 'mongoose';
 
 const headlineSchema = new mongoose.Schema({

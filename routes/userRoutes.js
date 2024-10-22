@@ -1,4 +1,4 @@
-// userRoutes.js
+// routes/userRoutes.js
 
 import { Router } from "express";
 import { createUser, getUser } from "../controllers/userController.js";
