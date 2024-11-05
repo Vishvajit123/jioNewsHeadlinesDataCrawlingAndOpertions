@@ -2,86 +2,176 @@
 import { redisClient } from '../config/redisConfig.js';
 import { Headline } from '../models/headlineModel.js';
 import { fetchHeadlinesFromAPI } from '../services/apiService.js';
-import { User } from '../models/userModel.js';
-import { pushToQueue } from '../services/redisService.js';
+// import { User } from '../models/userModel.js';
+// import { pushToQueue } from '../services/redisService.js';
 
-
+// Controller to fetch and return headlines with pagination support
 export const getHeadlinesController = async (req, res) => {
-  const { page=1, size=10 } = req.query;
-
+  const { page=1, size=50 } = req.query;
   try {
     const headlines = await getHeadlines(parseInt(page), parseInt(size));
-    res.status(200).json(headlines);
+    res.status(200).json(headlines); // Send headlines in response
   } catch (error) {
     console.error('Error fetching headlines:', error);
     res.status(500).json({ message: 'Failed to fetch headlines', error: error.message });
   }
 };
 
-export const getHeadlines = async (page, size) => {
-  // Create a unique Redis key using the page and size values to store and retrieve the cached data.
-  const redisKey = `headlines:page:${page}:size:${size}`;
+// export const getHeadlines = async (page, size) => {
+//   // Update Redis key to include both page and size
+//   const redisKey = `headlines:page:${page}:size:${size}`;
 
-  // Check in Redis
-  const cachedData = await redisClient.get(redisKey);
-  // If cached data exists, parse it from JSON format and return it
-  if (cachedData) {
-    return JSON.parse(cachedData);
-  }
+//   // Check in Redis for cached data
+//   const cachedData = await redisClient.get(redisKey);
+//   if (cachedData) {
+//     return JSON.parse(cachedData);
+//   }
 
-  // Fetch from the API
-  const apiData = await fetchHeadlinesFromAPI(page, size);
+//   // Fetch data from the API if not cached
+//   const apiData = await fetchHeadlinesFromAPI(page, size);
+//   const filteredHeadlines = apiData.map((brief) => ({
+//     title: brief.title,
+//     headline: brief.headline,
+//     categoryTitle: brief.category?.title,
+//     publishedAt: brief.publishedAt?.prettyDateTime,
+//     publisherName: brief.publisher?.name,
+//     publisherLink: brief.publisherLink,
+//   }));
+
+//   // Insert new headlines into MongoDB if they don't already exist
+//   for (const headline of filteredHeadlines) {
+//     const existingHeadline = await Headline.findOne({ title: headline.title });
+//     if (!existingHeadline) {
+//       await Headline.create(headline);
+//     }
+//   }
+
+//   // Cache the data in Redis with the updated key including page and size
+//   await redisClient.set(redisKey, JSON.stringify(filteredHeadlines));
+//   return filteredHeadlines;
+// };
+
+// Fetches headlines , appling caching nd update MongoDB if needede
+export const getHeadlines = async (page, requestedSize) => {
+  const standardSize = 50; // Define a standard size for API fetches
+  //Redis key for caching by page
+  const redisKey = `headlines:page:${page}`;
+
+  // Fetch new data from the API for current Page
+  const apiData = await fetchHeadlinesFromAPI(page, standardSize);
   const filteredHeadlines = apiData.map((brief) => ({
-    title: brief.title,
-    headline: brief.headline,
-    categoryTitle: brief.category?.title,
-    publishedAt: brief.publishedAt?.prettyDateTime,
-    publisherName: brief.publisher?.name,
-    publisherLink: brief.publisherLink,
+      id: brief.id,
+      title: brief.title,
+      headline: brief.headline,
+      categoryTitle: brief.category?.title,
+      publishedAt: brief.publishedAt?.prettyDateTime,
+      publisherName: brief.publisher?.name,
+      publisherLink: brief.publisherLink,
   }));
 
-  // Insert into MongoDB if not existing
+  // Insert/update in MongoDB if headlines are new
   for (const headline of filteredHeadlines) {
-    // Check if a headline doq with same title already exists in MongoDB
-    const existingHeadline = await Headline.findOne({ title: headline.title });
-    // if not then create new document -headline
-    if (!existingHeadline) {
-      await Headline.create(headline);
-      // Headline.create(headline) not only creates a new document in MongoDB but also inserts the data from the API into the MongoDB collection
-    }
+      const { id, ...headlineData } = headline; // Remove `id` before saving to MongoDB
+      await Headline.updateOne(
+          { title: headlineData.title }, // Use title or any unique field for identification
+          { $set: headlineData },
+          { upsert: true }
+      );
   }
 
-  // Cache the data in Redis as a JSON string using redisKey
-  await redisClient.set(redisKey, JSON.stringify(filteredHeadlines));
+  // Check existing Redis sorted set to avoid duplicate entries
+  const existingHeadlines = await redisClient.zRange(redisKey, 0, -1);
+  const existingIds = new Set(existingHeadlines.map((item) => JSON.parse(item).id));
 
-  return filteredHeadlines;
+  // Add only new headlines to Redis sorted set with timeStamp score
+  for (const headline of filteredHeadlines) {
+      if (!existingIds.has(headline.id)) {
+          // Parse publishedAt into a valid Date object
+          const publishedAtString = headline.publishedAt;
+          const publishedAtDate = new Date(publishedAtString.replace(/(\d{1,2}):(\d{2})([ap]m) (\d{1,2} \w{3} \d{4})/, (match, hour, minute, period, date) => {
+              // Convert to a 24-hour format
+              hour = period === 'pm' && hour !== '12' ? parseInt(hour) + 12 : hour;
+              hour = period === 'am' && hour === '12' ? '00' : hour;
+              return `${hour}:${minute} ${date}`;
+          }));
+          // Convert date to a numeric timestamp
+          const score = publishedAtDate.getTime();
+          // console.log(score.toString());
+          // Only add valid scores
+          if (!isNaN(score)) { // Ensure the score is valid
+              await redisClient.zAdd(redisKey, { score, value: JSON.stringify(headline) });
+          } else {
+              console.error(`Invalid publishedAt date for headline: ${JSON.stringify(headline)}`);
+          }
+      }
+  }
+
+  // Retrieve and return the sorted set of headlines based on requested size
+  const finalHeadlines = await redisClient.zRange(redisKey, 0, requestedSize - 1);
+
+  // Convert each JSON string back to an object for the response
+  return finalHeadlines.map((headline) => JSON.parse(headline));
 };
 
-// function to handle marking news as viewed
-export const viewNews = async (req, res) => {
-  const { userId, headlineId } = req.body;
 
+
+
+
+// Controller to get single headline by ID
+export const getHeadlineById = async (req, res) => {
+  const { id } = req.params; //get id from req.parameter
   try {
-    const headlineItem = await Headline.findById(headlineId);
-    if (!headlineItem) {
-      return res.status(404).json({ message: 'Headline not found'});
+    // Unique Redis key for the headline
+    const redisKey = `headlineById:${id}`;
+
+    // Check if the headline is cached in Redis
+    const cachedHeadline = await redisClient.get(redisKey);
+    if (cachedHeadline) {
+      return res.status(200).json(JSON.parse(cachedHeadline));// Return cached headline
     }
 
-    // Mark headline as viewed
-    headlineItem.isViewed = true;
-    // Save the updated headline back to MongoDB.
-    await headlineItem.save();
+    // Fetch from MongoDB if not found in Redis
+    const headline = await Headline.findById(id);
+    if (!headline) {
+      return res.status(404).json({ message: 'Headline not found' });
+    }
 
-    // Add Document(headline) to user's viewedNews array
-    await User.findByIdAndUpdate(userId, { $addToSet: { viewedNews: headlineId } });
+    // Cache the headline in Redis for future requests
+    await redisClient.set(redisKey, JSON.stringify(headline));
 
-    // Push headline to the Redis queue
-    await pushToQueue(`user:${userId}:viewedNews`, headlineId);
-
-    res.status(200).json({ message: 'Headline marked as viewed.' });
+    res.status(200).json(headline); // Return the headline data
   } catch (error) {
-    console.error('Error marking headline as viewed:', error);
-    res.status(500).json({ message: 'Error marking headline as viewed.' });
+    console.error('Error fetching headline by ID:', error);
+    res.status(500).json({ message: 'Error fetching headline by ID', error: error.message });
   }
 };
 
+
+// Controller to mark a headline as viewed by a user
+// export const viewNews = async (req, res) => {
+//   const { userId, headlineId } = req.body;
+
+//   try {
+//     // Retrieve the headline from MongoDB to ensure it exists
+//     const headlineItem = await Headline.findById(headlineId);
+//     if (!headlineItem) {
+//       return res.status(404).json({ message: 'Headline not found'});
+//     }
+
+//     // Mark the headline as viewed and save the update in MongoDB
+//     headlineItem.isViewed = true;
+//     // Save the updated headline back to MongoDB.
+//     await headlineItem.save();
+
+//     // Update the user's viewedNews arrayy
+//     await User.findByIdAndUpdate(userId, { $addToSet: { viewedNews: headlineId } });
+
+//     // Push headline to the Redis queue
+//     await pushToQueue(`user:${userId}:viewedNews`, headlineId);
+
+//     res.status(200).json({ message: 'Headline marked as viewed.' });
+//   } catch (error) {
+//     console.error('Error marking headline as viewed:', error);
+//     res.status(500).json({ message: 'Error marking headline as viewed.'});
+//   }
+// };
