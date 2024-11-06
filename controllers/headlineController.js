@@ -94,8 +94,9 @@ export const getHeadlines = async (page, requestedSize) => {
               hour = period === 'am' && hour === '12' ? '00' : hour;
               return `${hour}:${minute} ${date}`;
           }));
-          // Convert date to a numeric timestamp
-          const score = publishedAtDate.getTime();
+          // Convert date to a numeric timestamp in seconds
+          const score = Math.floor(publishedAtDate.getTime() / 1000);
+          // const score = publishedAtDate.getTime();
           // console.log(score.toString());
           // Only add valid scores
           if (!isNaN(score)) { // Ensure the score is valid

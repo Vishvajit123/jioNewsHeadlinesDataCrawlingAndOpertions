@@ -4,7 +4,7 @@ import { getHeadlines } from '../controllers/headlineController.js';
 
 const startCronJob = () => {
   // Schedule to run task every 15 minutes
-  cron.schedule('*/1 * * * *', async () => {
+  cron.schedule('*/15 * * * *', async () => {
     console.log('Running cron job to fetch and store headlines...');
     try {
       // Fetch the latest headlines with pagination from API and store them in MongoDB and Redis
