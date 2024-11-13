@@ -1,3 +1,5 @@
+//routes/viewRoutes.js
+
 import express from 'express';
 import { createView, getHeadlineViewCount, getUserViewedHeadlines } from '../controllers/viewController.js';
 

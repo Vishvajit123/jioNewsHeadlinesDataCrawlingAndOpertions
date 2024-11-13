@@ -1,3 +1,5 @@
+//models/viewModels.js
+
 import mongoose from 'mongoose';
 
 const viewSchema = new mongoose.Schema({

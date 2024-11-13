@@ -2,54 +2,33 @@
 import { redisClient } from '../config/redisConfig.js';
 import { Headline } from '../models/headlineModel.js';
 import { fetchHeadlinesFromAPI } from '../services/apiService.js';
+import { sendResponse } from '../utils/apiResponse.js';
+import { logError } from '../utils/commanError.js';
 // import { User } from '../models/userModel.js';
 // import { pushToQueue } from '../services/redisService.js';
+
+
+
 
 // Controller to fetch and return headlines with pagination support
 export const getHeadlinesController = async (req, res) => {
   const { page=1, size=50 } = req.query;
   try {
     const headlines = await getHeadlines(parseInt(page), parseInt(size));
-    res.status(200).json(headlines); // Send headlines in response
+    // res.status(200).json(headlines); // Send headlines in response
+    sendResponse(res, 200, "Headlines Fetched Successfully", headlines);
   } catch (error) {
-    console.error('Error fetching headlines:', error);
-    res.status(500).json({ message: 'Failed to fetch headlines', error: error.message });
+    // console.error('Error fetching headlines:', error);
+    logError(error);
+    // res.status(500).json({ message: 'Failed to fetch headlines', error: error.message });
+    sendResponse(res, 500, "Failed to fetch headlines", error.message)
   }
 };
 
-// export const getHeadlines = async (page, size) => {
-//   // Update Redis key to include both page and size
-//   const redisKey = `headlines:page:${page}:size:${size}`;
 
-//   // Check in Redis for cached data
-//   const cachedData = await redisClient.get(redisKey);
-//   if (cachedData) {
-//     return JSON.parse(cachedData);
-//   }
 
-//   // Fetch data from the API if not cached
-//   const apiData = await fetchHeadlinesFromAPI(page, size);
-//   const filteredHeadlines = apiData.map((brief) => ({
-//     title: brief.title,
-//     headline: brief.headline,
-//     categoryTitle: brief.category?.title,
-//     publishedAt: brief.publishedAt?.prettyDateTime,
-//     publisherName: brief.publisher?.name,
-//     publisherLink: brief.publisherLink,
-//   }));
 
-//   // Insert new headlines into MongoDB if they don't already exist
-//   for (const headline of filteredHeadlines) {
-//     const existingHeadline = await Headline.findOne({ title: headline.title });
-//     if (!existingHeadline) {
-//       await Headline.create(headline);
-//     }
-//   }
 
-//   // Cache the data in Redis with the updated key including page and size
-//   await redisClient.set(redisKey, JSON.stringify(filteredHeadlines));
-//   return filteredHeadlines;
-// };
 
 // Fetches headlines , appling caching nd update MongoDB if needede
 export const getHeadlines = async (page, requestedSize) => {
@@ -106,7 +85,6 @@ export const getHeadlines = async (page, requestedSize) => {
           }
       }
   }
-
   // Retrieve and return the sorted set of headlines based on requested size
   const finalHeadlines = await redisClient.zRange(redisKey, 0, requestedSize - 1);
 
@@ -128,24 +106,39 @@ export const getHeadlineById = async (req, res) => {
     // Check if the headline is cached in Redis
     const cachedHeadline = await redisClient.get(redisKey);
     if (cachedHeadline) {
-      return res.status(200).json(JSON.parse(cachedHeadline));// Return cached headline
+      // return res.status(200).json(JSON.parse(cachedHeadline));// Return cached headline
+    return sendResponse(res, 200, JSON.parse(cachedHeadline));
     }
 
     // Fetch from MongoDB if not found in Redis
     const headline = await Headline.findById(id);
     if (!headline) {
-      return res.status(404).json({ message: 'Headline not found' });
+      // return res.status(404).json({ message: 'Headline not found' });
+      return sendResponse(res, 404, "Headline not found");
     }
 
     // Cache the headline in Redis for future requests
     await redisClient.set(redisKey, JSON.stringify(headline));
 
-    res.status(200).json(headline); // Return the headline data
+    // res.status(200).json(headline); // Return the headline 
+    return sendResponse(res, 200, headline)
   } catch (error) {
     console.error('Error fetching headline by ID:', error);
-    res.status(500).json({ message: 'Error fetching headline by ID', error: error.message });
+    // logError(error);
+    // res.status(500).json({ message: 'Error fetching headline by ID', error: error.message });
+    return sendResponse(res, 500, "Error fetching headline by ID", error.message)
   }
 };
+
+
+
+
+
+
+
+
+
+
 
 
 // Controller to mark a headline as viewed by a user
