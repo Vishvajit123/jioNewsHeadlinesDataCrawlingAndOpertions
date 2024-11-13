@@ -1,9 +1,12 @@
 // config/mongoConfig.js
 import mongoose from 'mongoose';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 const connectMongo = async () => {
     try {
-        await mongoose.connect('mongodb://localhost:27017/newsDB');
+        await mongoose.connect(process.env.MONGO_URI);
         console.log('Connected to MongoDB');
     } catch (error) {
         console.error('MongoDB connection error:', error);
@@ -11,4 +14,4 @@ const connectMongo = async () => {
     }
 };
 
-export { connectMongo }; 
+export { connectMongo };
